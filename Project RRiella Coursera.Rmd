@@ -1,0 +1,142 @@
+---
+title: "Final Project"
+author: "Rebeca Riella"
+date: "23/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Instalar versiones viejas de random Forest (No funcionó)
+# urlPackage <- "https://cran.r-project.org/src/contrib/Archive/randomForest/randomForest_4.5-34.tar.gz"
+# install.packages(urlPackage, repos=NULL, type="source") 
+
+library(tidyverse)
+library(caret)
+library(rpart)
+library(rattle)
+library(readr)
+library(randomForest)
+library(knitr)
+
+```
+
+
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+# Load data
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+```{r load, warning=FALSE, message=FALSE}
+tes = read_csv("pml-testing.csv")
+tr = read_csv("pml-training.csv")
+```
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. 
+```{r}
+tr %>% count(classe) %>% 
+  mutate(Prop = round(n/sum(n)*100,1) ) %>% kable()
+
+```
+
+
+# Data Cleaning
+
+There are many variables with NA. I will remove that. 
+I will remove too the Near Zero Variance(NZR), and the ID variables.
+```{r}
+
+# remove columns only contain NA's
+tr  = tr [, colSums(is.na(tr)) == 0]
+# remove the Near Zero Variance columns
+tr = tr %>% select(- as.vector(nearZeroVar(tr, names=T)))
+# remove ID variables
+tr <- tr[,-(1:5)]
+
+#remove in testing too
+tes = tes %>% select(names(tr %>% select(-classe)))
+```
+
+
+I define training (tr1) and testing (tr2) data.frames
+```{r}
+aux  = createDataPartition(tr$classe, p=0.7, list=FALSE)
+tr1 = tr[aux, ]
+tr2  = tr[-aux, ]
+```
+
+
+# 1) Decision Tree
+
+```{r}
+mod = rpart(classe ~ ., data=tr1, method="class")
+mod
+```
+### Predict Decision Tree
+
+```{r}
+pred = predict(mod, tr2 , type = "class")
+result = confusionMatrix(pred, factor(tr2$classe))
+result
+```
+
+# 2) Random Forest
+
+
+```{r}
+set.seed(333)
+control2 = trainControl(method="cv", number=3, verboseIter=FALSE)
+mod2 = train(classe ~ ., data=tr1, method="rf",
+                          trControl=control2)
+mod2$finalModel
+```
+
+### Predict Random Forest
+
+```{r}
+predict2 = predict(mod2, newdata=tr2)
+result2  = confusionMatrix(predict2, factor(tr2$classe))
+result2
+```
+
+# 3) Generalized Boosted Model
+
+```{r}
+control3 = trainControl(method = "repeatedcv", number = 5, repeats = 1)
+mod3  = train(classe ~ ., data=tr1, method = "gbm",
+                    trControl = control3, verbose = FALSE)
+mod3$finalModel
+```
+
+### Predict Generalized Boosted Model
+```{r}
+predict3 = predict(mod3, newdata=tr2)
+result3  = confusionMatrix(predict3, factor(tr2$classe))
+result3
+```
+
+
+# Final Answer
+
+I will chose the best model using the Accuracy: Random Forest
+
+```{r}
+result$overall[1]  # D. Tree
+result2$overall[1] # R Forest 
+result3$overall[1] # G. Boosted Model
+
+```
+
+
+
+## Predict classe in Testing database
+
+
+```{r}
+predict(mod2, newdata=tes)
+
+```
+
